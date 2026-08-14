@@ -345,17 +345,13 @@
 <div class="toast" id="toast">تم النسخ ✓</div>
 
 <script>
-const STORAGE_KEY = 'sabco-attendance-config-v4';
+const STORAGE_KEY = 'sabco-attendance-config-v6';
 
 
 const WORKER_CATALOG = [
   { en:'RAGAB SABER IBRAHIM ELSAYED SHEHATA', ar:'رجب صابر إبراهيم السيد شحاتة' },
   { en:'OMER MOHAMMED AHMED ALMASRY', ar:'عمر محمد أحمد المصري' },
-  { en:'GIRUM DEMSE GEBRETSADIK', ar:'غيروم دمسي جبرصادق' },
-  { en:'SHAABAN MOHAMED HASSANEIN HUSSEIN', ar:'شعبان محمد حسنين حسين' },
-  { en:'IMDAD ULLAH FAZAL AZIM SHAH', ar:'امداد الله فضل عظيم شاه' },
   { en:'ESSAM EID MOHAMED ABDALAAL', ar:'عصام عيد محمد عبدالعال' },
-  { en:'ASHRAF IBRAHIM FEFNI IBRAHIM HEFNI', ar:'أشرف إبراهيم فيفني إبراهيم حفني' },
   { en:'AHMED GABER ABDELAZIZ MOHAMED', ar:'أحمد جابر عبدالعزيز محمد' },
   { en:'HOSSAM SALAH MOHAMED SOLIMAN', ar:'حسام صلاح محمد سليمان' },
   { en:'MOHAMED FARES RAMADAN ABDELHALIM RAMADAN', ar:'محمد فارس رمضان عبدالحليم رمضان' },
@@ -371,13 +367,18 @@ function workerAr(enName){
   return found ? found.ar : enName;
 }
 
+const END_OF_SERVICE_REASON = 'انهاء خدمات باعتبار اخر يوم دوام له اليوم السابق';
+
 const ABSENCE_REASONS = [
   'اجازة',
-  'انهاء خدمات (اخر يوم دوام له اليوم السابق)',
+  END_OF_SERVICE_REASON,
   'عطلة اسبوعية',
   'مرضية',
   'استئذان بخصم',
-  'استئذان من غير خصم'
+  'استئذان من غير خصم',
+  'اعارة',
+  'تعطل عن العمل',
+  'غياب'
 ];
 
 const SITE_CATALOG = [
@@ -403,6 +404,7 @@ function siteAr(enName){
 
 let state = {
   activeSites: [],
+  removedWorkers: [],
   sites: SITE_CATALOG.map(s => ({ name:s.en, note:'', workers:[] }))
 };
 
@@ -425,6 +427,7 @@ async function loadConfig(){
       const parsed = JSON.parse(res.value);
       if(parsed && parsed.sites && parsed.sites.length) state = parsed;
       if(!Array.isArray(state.activeSites)) state.activeSites = [];
+      if(!Array.isArray(state.removedWorkers)) state.removedWorkers = [];
     }
   }catch(e){ /* no saved config yet, use defaults */ }
   dateInput.value = todayISO();
@@ -510,7 +513,7 @@ function render(){
       }
     });
 
-    const availableWorkers = WORKERS.filter(name => !site.workers.some(w => w.name === name));
+    const availableWorkers = WORKERS.filter(name => !site.workers.some(w => w.name === name) && !state.removedWorkers.includes(name));
     const workerPicker = document.createElement('div');
     workerPicker.className = 'worker-picker-row';
     if(availableWorkers.length){
@@ -565,8 +568,14 @@ function attachListeners(){
   document.querySelectorAll('.reason-row select').forEach(sel=>{
     sel.onchange = e => {
       const {si, wi} = e.target.dataset;
-      state.sites[si].workers[wi].reason = e.target.value;
+      const worker = state.sites[si].workers[wi];
+      worker.reason = e.target.value;
+      if(worker.reason === END_OF_SERVICE_REASON && !state.removedWorkers.includes(worker.name)){
+        state.removedWorkers.push(worker.name);
+        showToast(`${workerAr(worker.name)} اتشال من قائمة العمال — انهاء خدمات`, 3200);
+      }
       saveConfig();
+      render();
     };
   });
   document.querySelectorAll('.add-worker-btn').forEach(btn=>{
@@ -672,7 +681,7 @@ function findUnrecordedWorkers(){
       site.workers.forEach(w => recorded.add(w.name));
     }
   });
-  return WORKERS.filter(name => !recorded.has(name)).map(name => workerAr(name));
+  return WORKERS.filter(name => !recorded.has(name) && !state.removedWorkers.includes(name)).map(name => workerAr(name));
 }
 
 function showModal(){
