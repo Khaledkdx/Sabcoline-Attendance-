@@ -345,7 +345,7 @@
 <div class="toast" id="toast">تم النسخ ✓</div>
 
 <script>
-const STORAGE_KEY = 'sabco-attendance-config-v6';
+const STORAGE_KEY = 'sabco-attendance-config-v7';
 
 
 const WORKER_CATALOG = [
@@ -359,7 +359,8 @@ const WORKER_CATALOG = [
   { en:'MUHAMMAD KHURSHEED HAJI HAMIDULLAH', ar:'محمد خورشيد حاجي حميدالله' },
   { en:'OSSAMA ESSAMELDIN KAMAL AHMED', ar:'أسامة عصام الدين كمال أحمد' },
   { en:'NADER RAGAB SAYED AHMED MAHMOUD', ar:'نادر رجب سيد أحمد محمود' },
-  { en:'SALEH HASSAN GHANEM SAAD', ar:'صالح حسن غانم سعد' }
+  { en:'SALEH HASSAN GHANEM SAAD', ar:'صالح حسن غانم سعد' },
+  { en:'YASSER MOHAMED', ar:'ياسر محمد' }
 ];
 const WORKERS = WORKER_CATALOG.map(w => w.en);
 function workerAr(enName){
@@ -368,6 +369,11 @@ function workerAr(enName){
 }
 
 const END_OF_SERVICE_REASON = 'انهاء خدمات باعتبار اخر يوم دوام له اليوم السابق';
+
+const PRESENT_TYPES = [
+  'سابكو لاين',
+  'توريد الي سابكو'
+];
 
 const ABSENCE_REASONS = [
   'اجازة',
@@ -495,6 +501,17 @@ function render(){
       `;
       el.appendChild(row);
 
+      if(w.status === 'present'){
+        const presentType = w.presentType || PRESENT_TYPES[0];
+        const typeRow = document.createElement('div');
+        typeRow.className = 'reason-row present-type-row';
+        const options = PRESENT_TYPES.map(t =>
+          `<option value="${escapeAttr(t)}" ${presentType===t?'selected':''}>${t}</option>`
+        ).join('');
+        typeRow.innerHTML = `<select class="present-type-select" data-si="${si}" data-wi="${wi}">${options}</select>`;
+        el.appendChild(typeRow);
+      }
+
       if(w.status === 'absent'){
         const reasonRow = document.createElement('div');
         reasonRow.className = 'reason-row';
@@ -554,7 +571,11 @@ function attachListeners(){
   document.querySelectorAll('.toggle button').forEach(btn=>{
     btn.onclick = e => {
       const {si, wi, status} = e.target.dataset;
-      state.sites[si].workers[wi].status = status;
+      const worker = state.sites[si].workers[wi];
+      worker.status = status;
+      if(status === 'present' && !worker.presentType){
+        worker.presentType = PRESENT_TYPES[0];
+      }
       render();
     };
   });
@@ -565,7 +586,7 @@ function attachListeners(){
       render();
     };
   });
-  document.querySelectorAll('.reason-row select').forEach(sel=>{
+  document.querySelectorAll('.reason-row select:not(.present-type-select)').forEach(sel=>{
     sel.onchange = e => {
       const {si, wi} = e.target.dataset;
       const worker = state.sites[si].workers[wi];
@@ -576,6 +597,13 @@ function attachListeners(){
       }
       saveConfig();
       render();
+    };
+  });
+  document.querySelectorAll('.present-type-select').forEach(sel=>{
+    sel.onchange = e => {
+      const {si, wi} = e.target.dataset;
+      state.sites[si].workers[wi].presentType = e.target.value;
+      saveConfig();
     };
   });
   document.querySelectorAll('.add-worker-btn').forEach(btn=>{
@@ -595,6 +623,10 @@ function numTag(i){
   return i <= 10 ? numEmoji[i] : `${i}.`;
 }
 
+function presentTypeEn(ar){
+  return ar === 'توريد الي سابكو' ? 'Supply to Sabco' : 'Sabco Line';
+}
+
 function buildReportData(){
   const dateISO = dateInput.value || todayISO();
   const activeSites = state.sites.filter(s => state.activeSites.includes(s.name));
@@ -603,7 +635,10 @@ function buildReportData(){
     date_display: formatDateDMY(dateISO),
     projects: activeSites.map(site => ({
       project: site.name,
-      present: site.workers.filter(w => w.status === 'present').map(w => w.name || null),
+      present: site.workers.filter(w => w.status === 'present').map(w => ({
+        name: w.name || null,
+        type: presentTypeEn(w.presentType || PRESENT_TYPES[0])
+      })),
       absent: site.workers.filter(w => w.status === 'absent').map(w => ({
         name: w.name || null,
         reason: w.reason || null
@@ -628,7 +663,7 @@ function buildReportText(){
     lines.push(`🔺 ${siteAr(site.name)}${site.note ? ' – ' + site.note : ''}`);
     if(presentWorkers.length){
       presentWorkers.forEach((w,i) => {
-        lines.push(`${numTag(i+1)} ${workerAr(w.name) || '—'} – حاضر`);
+        lines.push(`${numTag(i+1)} ${workerAr(w.name) || '—'} – حاضر (${w.presentType || PRESENT_TYPES[0]})`);
       });
     } else {
       lines.push('لا يوجد حاضرين');
